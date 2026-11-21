@@ -12,6 +12,29 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Notify Slack — deployment started
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL not set; skipping notification"
+            exit 0
+          fi
+          curl -sS -X POST -H 'Content-type: application/json' \
+            --data "{
+              \"text\": \":rocket: *Deployment started* — ${{ github.repository }}\",
+              \"attachments\": [{
+                \"color\": \"#439FE0\",
+                \"fields\": [
+                  {\"title\": \"Environment\",   \"value\": \"production\",                              \"short\": true},
+                  {\"title\": \"Image tag\",      \"value\": \"${{ github.sha }}\",                      \"short\": true},
+                  {\"title\": \"Triggered by\",   \"value\": \"${{ github.actor }}\",                    \"short\": true},
+                  {\"title\": \"Workflow run\",   \"value\": \"<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>\", \"short\": true}
+                ]
+              }]
+            }" \
+            "$SLACK_WEBHOOK_URL"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -48,6 +71,10 @@ jobs:
           container-name: ${{ secrets.ECS_CONTAINER_NAME }}
           image: ${{ steps.build-image.outputs.image }}
 
+      - name: Record deployment start time
+        id: start-time
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
       - name: Deploy to ECS Fargate
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
@@ -55,6 +82,32 @@ jobs:
           service: ${{ secrets.ECS_SERVICE }}
           cluster: ${{ secrets.ECS_CLUSTER }}
           wait-for-service-stability: true
+
+      - name: Notify Slack — deployment succeeded
+        if: success()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL not set; skipping notification"
+            exit 0
+          fi
+          DURATION=$(( $(date +%s) - ${{ steps.start-time.outputs.start }} ))
+          curl -sS -X POST -H 'Content-type: application/json' \
+            --data "{
+              \"text\": \":white_check_mark: *Deployment succeeded* — ${{ github.repository }}\",
+              \"attachments\": [{
+                \"color\": \"good\",
+                \"fields\": [
+                  {\"title\": \"Environment\",        \"value\": \"production\",                              \"short\": true},
+                  {\"title\": \"Image tag\",           \"value\": \"${{ github.sha }}\",                      \"short\": true},
+                  {\"title\": \"Duration\",            \"value\": \"${DURATION}s\",                            \"short\": true},
+                  {\"title\": \"Health check\",        \"value\": \"passed\",                                  \"short\": true},
+                  {\"title\": \"Workflow run\",        \"value\": \"<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>\", \"short\": false}
+                ]
+              }]
+            }" \
+            "$SLACK_WEBHOOK_URL"
 
       - name: Notify Slack on failure
         if: failure()
@@ -66,5 +119,16 @@ jobs:
             exit 0
           fi
           curl -sS -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\"ECS Fargate deployment to staging failed for ${{ github.repository }}@${{ github.sha }}. See ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+            --data "{
+              \"text\": \":x: *Deployment failed* — ${{ github.repository }}\",
+              \"attachments\": [{
+                \"color\": \"danger\",
+                \"fields\": [
+                  {\"title\": \"Environment\",   \"value\": \"production\",  \"short\": true},
+                  {\"title\": \"Image tag\",      \"value\": \"${{ github.sha }}\",  \"short\": true},
+                  {\"title\": \"Triggered by\",   \"value\": \"${{ github.actor }}\",  \"short\": true},
+                  {\"title\": \"Failed run\",     \"value\": \"<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>\", \"short\": false}
+                ]
+              }]
+            }" \
             "$SLACK_WEBHOOK_URL"

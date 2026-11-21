@@ -21,6 +21,8 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { I18nProvider } from '@/context/I18nContext';
 // Wallet auth context — Issue #1208
 import { WalletProvider } from '@/context/WalletContext';
+// ARIA live region for dynamic content updates — Issue #1461
+import LiveRegion from '@/components/LiveRegion';
 
 export const metadata: Metadata = {
   title: "Handsoff",
@@ -333,6 +335,36 @@ export default function RootLayout({
                 {/* Global error boundary — Issue #1399 */}
                 <ErrorBoundary fullPage>{children}</ErrorBoundary>
               </main>
+              {/*
+               * Site footer landmark — Issue #1461
+               * Uses the semantic <footer> element so screen readers expose it
+               * as a "contentinfo" landmark, allowing keyboard navigation via
+               * the landmarks list (NVDA: Insert+F7 / VoiceOver: VO+U).
+               */}
+              <footer
+                aria-label="Site information"
+                className="no-print border-t px-6 py-4 text-sm"
+                style={{
+                  borderColor: 'var(--color-nav-border)',
+                  backgroundColor: 'var(--color-nav-bg)',
+                  color: 'var(--color-text-muted)',
+                }}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>© {new Date().getFullYear()} StellarKraal. Built on Stellar.</span>
+                  <nav aria-label="Footer navigation" className="flex gap-4">
+                    <Link href="/help/faq" className="hover:opacity-80 transition" style={{ color: 'var(--color-text-muted)' }}>FAQ</Link>
+                    <Link href="/settings" className="hover:opacity-80 transition" style={{ color: 'var(--color-text-muted)' }}>Settings</Link>
+                  </nav>
+                </div>
+              </footer>
+              {/*
+               * Global ARIA live region — Issue #1461
+               * Announced to screen readers whenever loan status changes,
+               * notifications arrive, or other dynamic updates occur.
+               * Components write to this region via the useLiveRegion hook.
+               */}
+              <LiveRegion />
               <ToastContainer />
               <WhatsNewProvider />
             </SWRErrorToastConfig>
